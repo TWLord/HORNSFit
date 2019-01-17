@@ -6,7 +6,6 @@
 #include "TH1.h"
 #include "TAxis.h"
 #include "TStyle.h"
-#include "TLegend.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -44,13 +43,8 @@ void fluxHistFits::init()
     theCanvas_ = new TCanvas("theCanvas", "", 900, 700);
     // Plain drawing style
     gROOT->SetStyle("Plain");
-    // Remove title, entries, mean, std dev from legend
-    gStyle->SetOptStat(0);
     // Fit display options
-//    gStyle->SetOptFit(0111);
-    gStyle->SetOptFit(0000);
-    // Force loaded histograms to follow style
-    gROOT->ForceStyle();
+    gStyle->SetOptFit(1111);
 
 }
 
@@ -71,7 +65,7 @@ void fluxHistFits::run()
 	    // Get the histogram
 	    TH1F* theHist = dynamic_cast<TH1F*>(fitFile->Get(NDHistName_.c_str()));
 	    if (theHist) {
-
+		theHist->Scale(1/theHist->Integral()); // Normalise fitting hists
 		HistObject hObj(theHist);
 		histos.push_back(hObj);
 	    } else {
@@ -99,67 +93,26 @@ void fluxHistFits::fitHisto(std::vector<HistObject>& histVector)
 	std::cout<<"Error, can't find histogram "<<FDHistName_<<" for file "<<inFileName_<<std::endl;
 	return;
     }
-
+    // Normalise hist to be fitted
+    theHist->Scale(1/theHist->Integral()); // Normalise fitted hist
     int nHist = histVector.size();
     std::cout<<"nHist = "<<nHist<<std::endl;
     
     TheFitFunction fObj(histVector);
 
-    Double_t xMin(0.75), xMax(7.75);
+    Double_t xMin(0.5), xMax(7.75);
     Int_t nParams = histVector.size();
 
     TF1* theFun = new TF1("theFun", fObj, xMin, xMax, nParams);
     // Initialise parameters
     for (int i = 0; i < nParams; i++) {
 	theFun->SetParameter(i, 1.0);
-	theFun->SetParName(i, (fitFileNames_[i].substr(15,6)+" ").c_str());
+	theFun->SetParName(i, fitFileNames_[i].substr(15,6).c_str());
     }
 
     theHist->Fit("theFun","R");
-    std::string CanvasName = "xRange=" + std::to_string(xMin).substr(0,4) + "-" + std::to_string(xMax).substr(0,3) + "_" + std::to_string(nHist) + "ParamFit";
-    theCanvas_->Print((CanvasName+".png").c_str());
-
-
-    histVector[0].theHist_->Scale(theFun->GetParameter(0)*pow(10,-20));
-    histVector[0].theHist_->SetAxisRange(-60.0E-12, 60.0E-12, "Y");
-
-    TH1* lincomb = dynamic_cast<TH1*>(histVector[0].theHist_->Clone());
-    auto legend = new TLegend(0.7, 0.6, 0.985, 0.995);
-    legend->AddEntry(histVector[0].theHist_, (theFun->GetParName(0) + std::to_string(theFun->GetParameter(0))).c_str() );
-
-    for (Int_t i = 1; i < nParams; i++) {
-	histVector[i].theHist_->Scale(theFun->GetParameter(i)*pow(10,-20));
-	lincomb->Add(histVector[i].theHist_);
-
-	legend->SetHeader("Horn Fluxes", "C");
-	std::string legendname = theFun->GetParName(i) + std::to_string(theFun->GetParameter(i));
-	legend->AddEntry(histVector[i].theHist_, legendname.c_str() );
-    }
-    theHist->Draw("PLC");
-    lincomb->SetLineColor(kViolet-1);
-    lincomb->Draw("L SAME PMC"); 
-    theCanvas_->Print((CanvasName+"lincomb.png").c_str());
-
-    histVector[0].theHist_->Draw("PLC PMC");
-    for (Int_t i = 1; i < nParams; i++) {
-	histVector[i].theHist_->Draw("SAME PLC PMC");
-    }
-/**/    theHist->Draw("L SAME");
-    lincomb->Draw("L SAME PMC"); 
-    legend->AddEntry(lincomb, "FD Osc Flux Fit" );
-    legend->Draw();
-//    theCanvas_->Update(); 
-    theCanvas_->Print((CanvasName+"weights.png").c_str());
-
-    lincomb->Add(theHist,-1);
-    lincomb->Draw("PLC PMC"); 
-    theCanvas_->Print((CanvasName+"residuals.png").c_str());
-    lincomb->Add(theHist);
-    lincomb->Divide(theHist);
-    theHist->Divide(theHist);
-    lincomb->Draw("PLC PMC"); 
-    theHist->Draw("SAME PLC");
-    theCanvas_->Print((CanvasName+"normed.png").c_str());
+    std::string CanvasName = "xRange=" + std::to_string(xMin).substr(0,4) + "-" + std::to_string(xMax).substr(0,3) + "_" + std::to_string(nHist) + "NormedParamFit.png";
+    theCanvas_->Print(CanvasName.c_str());
 
 }
 
@@ -178,8 +131,8 @@ Double_t TheFitFunction::operator()(Double_t* xArr, Double_t* par)
 	result += hObj.getValue(x, par[i]);
 
     }
-
-    return result*pow(10,-8);//scaling for readability/fitting
+    return result;//no scaling
+//    return result*pow(10,-8);//scaling for readability/fitting
 }
 
 HistObject::HistObject(TH1* theHist) :
@@ -223,8 +176,8 @@ Double_t HistObject::getValue(Double_t x, Double_t param) {
 	}
 //    }
    }
-
-    return Result*pow(10,-12);//correction factor for difference in histogram Y axis scale
+    return Result;//correction factor for difference in histogram Y axis scale
+//    return Result*pow(10,-12);//correction factor for difference in histogram Y axis scale
 
 }
 
@@ -237,37 +190,37 @@ int main(const int argc, const char** argv)
     std::string FDFileN;
 
     // First filename is location of oscillated FD histogram
-    FDFileN = "Histo5/fluxhistN2934FD.root";
-//    FDFileN = "Histo2/fluxhist0N2934FD.root";
+//    FDFileN = "Histos/fluxhistN2934FD.root";
+    FDFileN = "Histo2/fluxhist0N2934FD.root";
 //    FDFileN = "exampleHistos/fluxhist1504.root";
     std::cout<<"Fitting to "<<FDFileN<<std::endl;
 
     // Following files give location of fitting histograms
-    NDFileN.push_back("Histo5/fluxhist0N3001.root");
-    NDFileN.push_back("Histo5/fluxhist0N3002.root");
-    //NDFileN.push_back("Histo5/fluxhist0N3003.root");
-    NDFileN.push_back("Histo5/fluxhist0N3004.root");
-//    NDFileN.push_back("Histo5/fluxhist0N3005.root");
-//    NDFileN.push_back("Histo5/fluxhist0N1501.root");
-    NDFileN.push_back("Histo5/fluxhist0N0752.root");
-//    NDFileN.push_back("Histo5/fluxhist0N1002.root");//
-    NDFileN.push_back("Histo5/fluxhist0N1252.root");
-    NDFileN.push_back("Histo5/fluxhist0N2002.root");
-    //NDFileN.push_back("Histo5/fluxhist0N2502.root");//
-    //NDFileN.push_back("Histo5/fluxhist0N1503.root");//
-//    NDFileN.push_back("Histo5/fluxhist0N2003.root");//
-    NDFileN.push_back("Histo5/fluxhist0N1254.root");
-    NDFileN.push_back("Histo5/fluxhist0N1505.root");
-    //NDFileN.push_back("Histo5/fluxhist0N2505.root");
-//    NDFileN.push_back("Histo5/fluxhist0N3505.root");
-    //NDFileN.push_back("Histo5/fluxhist0A0752.root");
-    NDFileN.push_back("Histo5/fluxhist0A3002.root");
-//    NDFileN.push_back("Histo5/fluxhist1N3004.root");
-//    NDFileN.push_back("Histo5/fluxhist2N3004.root");
-//    NDFileN.push_back("Histo5/fluxhist3N3004.root");
-//    NDFileN.push_back("Histo5/fluxhist4N3004.root");
-//    NDFileN.push_back("Histo5/fluxhist5N3004.root");
-//    NDFileN.push_back("Histo5/fluxhist6N3004.root");
+    NDFileN.push_back("Histo2/fluxhist0N3001.root");
+    NDFileN.push_back("Histo2/fluxhist0N3002.root");
+    NDFileN.push_back("Histo2/fluxhist0N3003.root");
+    NDFileN.push_back("Histo2/fluxhist0N3004.root");
+    NDFileN.push_back("Histo2/fluxhist0N3005.root");
+//    NDFileN.push_back("Histo2/fluxhist0N1501.root");
+    NDFileN.push_back("Histo2/fluxhist0N0752.root");
+    NDFileN.push_back("Histo2/fluxhist0N1002.root");//
+//    NDFileN.push_back("Histo2/fluxhist0N1252.root");
+//    NDFileN.push_back("Histo2/fluxhist0N2002.root");
+    NDFileN.push_back("Histo2/fluxhist0N2502.root");//
+//    NDFileN.push_back("Histo2/fluxhist0N1503.root");//
+//    NDFileN.push_back("Histo2/fluxhist0N2003.root");//
+    NDFileN.push_back("Histo2/fluxhist0N1254.root");
+//    NDFileN.push_back("Histo2/fluxhist0N1505.root");
+//    NDFileN.push_back("Histo2/fluxhist0N2005.root");
+//    NDFileN.push_back("Histo2/fluxhist0N2505.root");
+//    NDFileN.push_back("Histo2/fluxhist0A0752.root");
+//    NDFileN.push_back("Histo2/fluxhist0A3002.root");
+/*    NDFileN.push_back("Histo2/fluxhist1N3004.root");
+    NDFileN.push_back("Histo2/fluxhist2N3004.root");
+    NDFileN.push_back("Histo2/fluxhist3N3004.root");
+    NDFileN.push_back("Histo2/fluxhist4N3004.root");
+    NDFileN.push_back("Histo2/fluxhist5N3004.root");
+*///    NDFileN.push_back("Histo2/fluxhist6N3004.root");
     
     int nNDFiles = NDFileN.size();
     for (int i=0; i<nNDFiles; i++) {

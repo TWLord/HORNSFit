@@ -6,7 +6,6 @@
 class TCanvas;
 class TFile;
 class TH1;
-class TLegend;
 
 class HistObject {
 
@@ -18,11 +17,9 @@ public:
     // Function value for given bin x
     Double_t getValue(Double_t x, Double_t param);
 
-    TH1* theHist_;
-    
 private:
 
-//    TH1* theHist_;
+    TH1* theHist_;
     Double_t xMin_;
     Double_t xMax_;
     Double_t dx_;
